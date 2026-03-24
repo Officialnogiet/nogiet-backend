@@ -20,7 +20,7 @@ export class UserRepository {
     email: string;
     passwordHash: string;
     phone?: string;
-    role?: "super_admin" | "admin" | "member";
+    role?: "super_admin" | "admin" | "member" | "facility_owner";
   }) {
     const [user] = await this.db.insert(users).values(data).returning();
     return user;

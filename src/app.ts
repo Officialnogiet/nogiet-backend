@@ -24,6 +24,10 @@ import { RoleService } from "./services/role.service";
 import { EmailService } from "./services/email/email.service";
 import { SmsService } from "./services/sms/sms.service";
 import { CarbonMapperService } from "./services/third-party/carbon-mapper.service";
+import { MethansatService } from "./services/third-party/methansat.service";
+import { ImeoService } from "./services/third-party/imeo.service";
+import { TropomiService } from "./services/third-party/tropomi.service";
+import { SatelliteAggregatorService } from "./services/third-party/satellite-aggregator.service";
 import { CloudflareR2Service } from "./services/third-party/cloudflare-r2.service";
 import { CacheService } from "./services/cache.service";
 
@@ -39,7 +43,12 @@ import { emissionRoutes } from "./routes/emission.routes";
 import { roleRoutes } from "./routes/role.routes";
 import { uploadRoutes } from "./routes/upload.routes";
 
-export async function buildApp(db: any): Promise<FastifyInstance> {
+export interface AppContext {
+  fastify: FastifyInstance;
+  emissionService: EmissionService;
+}
+
+export async function buildApp(db: any): Promise<AppContext> {
   const fastify = Fastify({
     logger: {
       level: env.NODE_ENV === "production" ? "info" : "debug",
@@ -93,12 +102,16 @@ export async function buildApp(db: any): Promise<FastifyInstance> {
   const emailService = new EmailService();
   const smsService = new SmsService();
   const carbonMapper = new CarbonMapperService();
+  const methansatService = new MethansatService();
+  const imeoService = new ImeoService();
+  const tropomiService = new TropomiService();
   const r2 = new CloudflareR2Service();
   const cacheService = new CacheService();
+  const aggregator = new SatelliteAggregatorService(carbonMapper, methansatService, imeoService, tropomiService, cacheService);
 
   const authService = new AuthService(userRepo, emailService, smsService, fastify);
   const userService = new UserService(userRepo, emailService);
-  const emissionService = new EmissionService(emissionRepo, carbonMapper, cacheService, emailService, userRepo);
+  const emissionService = new EmissionService(emissionRepo, carbonMapper, cacheService, aggregator, emailService, userRepo);
   const roleService = new RoleService(roleRepo);
 
   const authController = new AuthController(authService);
@@ -140,5 +153,5 @@ export async function buildApp(db: any): Promise<FastifyInstance> {
     });
   });
 
-  return fastify;
+  return { fastify, emissionService };
 }

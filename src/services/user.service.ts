@@ -35,11 +35,12 @@ export class UserService {
       throw Object.assign(new Error("Email already in use"), { statusCode: 409 });
     }
 
-    const tempPassword = generateOTP(8);
+    const tempPassword = input.tempPassword || generateOTP(8);
     const passwordHash = await hashPassword(tempPassword);
 
+    const { tempPassword: _tp, ...rest } = input;
     const user = await this.userRepo.create({
-      ...input,
+      ...rest,
       passwordHash,
     });
 

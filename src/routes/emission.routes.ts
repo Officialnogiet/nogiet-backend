@@ -1,16 +1,22 @@
 import { FastifyInstance } from "fastify";
 import { EmissionController } from "../controllers/emission.controller";
 import { validate } from "../middlewares/validate.middleware";
-import { authenticate } from "../middlewares/auth.middleware";
+import { authenticate, authorize } from "../middlewares/auth.middleware";
 import {
   submitGroundDataSchema,
   facilityIdParamSchema,
   emissionFilterSchema,
   createFacilitySchema,
   createAlertSchema,
+  updateFacilityThresholdSchema,
+  createGeofenceSchema,
+  updateGeofenceSchema,
+  createFieldSubmissionSchema,
+  reviewFieldSubmissionSchema,
 } from "../validations/emission.validation";
 
 export function emissionRoutes(fastify: FastifyInstance, controller: EmissionController) {
+  // Facilities
   fastify.get("/facilities", {
     preHandler: [authenticate],
     handler: controller.getFacilities,
@@ -26,11 +32,22 @@ export function emissionRoutes(fastify: FastifyInstance, controller: EmissionCon
     handler: controller.createFacility,
   });
 
+  fastify.put("/facilities/:id/threshold", {
+    preHandler: [authenticate, validate(facilityIdParamSchema, "params"), validate(updateFacilityThresholdSchema)],
+    handler: controller.updateFacilityThreshold,
+  });
+
   fastify.delete("/facilities/:id", {
     preHandler: [authenticate, validate(facilityIdParamSchema, "params")],
     handler: controller.deleteFacility,
   });
 
+  fastify.get("/facilities/filter-options", {
+    preHandler: [authenticate],
+    handler: controller.getFacilityFilterOptions,
+  });
+
+  // Alerts
   fastify.post("/alerts", {
     preHandler: [authenticate, validate(createAlertSchema)],
     handler: controller.createAlert,
@@ -76,6 +93,7 @@ export function emissionRoutes(fastify: FastifyInstance, controller: EmissionCon
     handler: controller.setEmailAlerts,
   });
 
+  // Satellite
   fastify.get("/satellite/sources", {
     preHandler: [authenticate, validate(emissionFilterSchema, "querystring")],
     handler: controller.getSatelliteSources,
@@ -94,5 +112,53 @@ export function emissionRoutes(fastify: FastifyInstance, controller: EmissionCon
   fastify.get("/comparison/:id", {
     preHandler: [authenticate, validate(facilityIdParamSchema, "params")],
     handler: controller.getComparisonData,
+  });
+
+  // Geofences
+  fastify.get("/geofences", {
+    preHandler: [authenticate],
+    handler: controller.getGeofences,
+  });
+
+  fastify.post("/geofences", {
+    preHandler: [authenticate, validate(createGeofenceSchema)],
+    handler: controller.createGeofence,
+  });
+
+  fastify.put("/geofences/:id", {
+    preHandler: [authenticate, validate(facilityIdParamSchema, "params"), validate(updateGeofenceSchema)],
+    handler: controller.updateGeofence,
+  });
+
+  fastify.delete("/geofences/:id", {
+    preHandler: [authenticate, validate(facilityIdParamSchema, "params")],
+    handler: controller.deleteGeofence,
+  });
+
+  // Field Submissions
+  fastify.post("/field-submissions", {
+    preHandler: [authenticate, validate(createFieldSubmissionSchema)],
+    handler: controller.createFieldSubmission,
+  });
+
+  fastify.get("/field-submissions", {
+    preHandler: [authenticate],
+    handler: controller.getFieldSubmissions,
+  });
+
+  fastify.put("/field-submissions/:id/review", {
+    preHandler: [authenticate, authorize("super_admin", "admin"), validate(facilityIdParamSchema, "params"), validate(reviewFieldSubmissionSchema)],
+    handler: controller.reviewFieldSubmission,
+  });
+
+  // Dashboard
+  fastify.get("/dashboard/summary", {
+    preHandler: [authenticate],
+    handler: controller.getDashboardSummary,
+  });
+
+  fastify.get("/emissions/aggregations", {
+    preHandler: [authenticate],
+    handler: controller.getEmissionAggregations,
   });
 }

@@ -1,14 +1,25 @@
 import { FastifyRequest, FastifyReply } from "fastify";
 import { EmissionService } from "../services/emission.service";
 import { success, created, error } from "../utils/api-response";
-import type { SubmitGroundDataInput, EmissionFilterInput, CreateFacilityInput, CreateAlertInput } from "../validations/emission.validation";
+import type {
+  SubmitGroundDataInput,
+  EmissionFilterInput,
+  CreateFacilityInput,
+  CreateAlertInput,
+  UpdateFacilityThresholdInput,
+  CreateGeofenceInput,
+  UpdateGeofenceInput,
+  CreateFieldSubmissionInput,
+  ReviewFieldSubmissionInput,
+} from "../validations/emission.validation";
 
 export class EmissionController {
   constructor(private emissionService: EmissionService) {}
 
-  getFacilities = async (_request: FastifyRequest, reply: FastifyReply) => {
+  getFacilities = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
-      const result = await this.emissionService.getFacilities();
+      const { state, lga, oilBlock, operator, facilityType } = request.query as any;
+      const result = await this.emissionService.getFacilities({ state, lga, oilBlock, operator, facilityType });
       return success(reply, result);
     } catch (err: any) {
       return error(reply, err.message, err.statusCode ?? 500);
@@ -41,6 +52,28 @@ export class EmissionController {
       const { id } = request.params as { id: string };
       const result = await this.emissionService.deleteFacility(id);
       return success(reply, result, "Facility deleted");
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  updateFacilityThreshold = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const result = await this.emissionService.updateFacilityThreshold(
+        id,
+        request.body as UpdateFacilityThresholdInput
+      );
+      return success(reply, result, "Threshold updated");
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  getFacilityFilterOptions = async (_request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const result = await this.emissionService.getFacilityFilterOptions();
+      return success(reply, result);
     } catch (err: any) {
       return error(reply, err.message, err.statusCode ?? 500);
     }
@@ -182,6 +215,102 @@ export class EmissionController {
         mode as "nearest" | "area" | undefined,
         maxKm && !isNaN(maxKm) ? maxKm : undefined,
       );
+      return success(reply, result);
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  // ---- Geofences ----
+
+  getGeofences = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = (request as any).user.sub;
+      const result = await this.emissionService.getGeofences(userId);
+      return success(reply, result);
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  createGeofence = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = (request as any).user.sub;
+      const result = await this.emissionService.createGeofence(userId, request.body as CreateGeofenceInput);
+      return created(reply, result, "Geofence created");
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  updateGeofence = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const userId = (request as any).user.sub;
+      const result = await this.emissionService.updateGeofence(id, userId, request.body as UpdateGeofenceInput);
+      return success(reply, result, "Geofence updated");
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  deleteGeofence = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const userId = (request as any).user.sub;
+      const result = await this.emissionService.deleteGeofence(id, userId);
+      return success(reply, result, "Geofence deleted");
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  // ---- Field Submissions ----
+
+  createFieldSubmission = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const userId = (request as any).user.sub;
+      const result = await this.emissionService.createFieldSubmission(userId, request.body as CreateFieldSubmissionInput);
+      return created(reply, result, "Field submission created");
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  getFieldSubmissions = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { facilityId } = request.query as { facilityId?: string };
+      const result = await this.emissionService.getFieldSubmissions(facilityId);
+      return success(reply, result);
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  reviewFieldSubmission = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const result = await this.emissionService.reviewFieldSubmission(id, request.body as ReviewFieldSubmissionInput);
+      return success(reply, result, "Submission reviewed");
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  // ---- Dashboard ----
+
+  getDashboardSummary = async (_request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const result = await this.emissionService.getDashboardSummary();
+      return success(reply, result);
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  getEmissionAggregations = async (_request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const result = await this.emissionService.getEmissionAggregations();
       return success(reply, result);
     } catch (err: any) {
       return error(reply, err.message, err.statusCode ?? 500);

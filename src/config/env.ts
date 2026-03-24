@@ -18,6 +18,18 @@ const envSchema = z.object({
   CARBON_MAPPER_EMAIL: z.string().optional(),
   CARBON_MAPPER_PASSWORD: z.string().optional(),
 
+  // MethaneSAT / EMIT NASA
+  METHANSAT_API_URL: z.string().optional(),
+  METHANSAT_API_KEY: z.string().optional(),
+
+  // UNEP IMEO
+  IMEO_API_URL: z.string().optional(),
+  IMEO_API_KEY: z.string().optional(),
+
+  // Sentinel-5P TROPOMI
+  TROPOMI_API_URL: z.string().optional(),
+  TROPOMI_API_KEY: z.string().optional(),
+
   // Resend (Email)
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("NOGIET Portal <noreply@nogiet.gov.ng>"),

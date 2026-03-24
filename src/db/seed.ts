@@ -17,6 +17,7 @@ async function seed() {
     { name: "super_admin", description: "Full access — MD, CEO, CDO, CTO" },
     { name: "admin", description: "Management access — Managers, Team Leads" },
     { name: "member", description: "Standard team member access" },
+    { name: "facility_owner", description: "Facility owner — can submit field data and view own facility" },
   ]).returning();
 
   // Permissions
@@ -29,6 +30,8 @@ async function seed() {
     { name: "role_management", description: "Configure roles and permissions" },
     { name: "settings", description: "Change application settings" },
     { name: "export_data", description: "Export reports and data" },
+    { name: "field_data", description: "Submit and view field data collection forms" },
+    { name: "geofencing", description: "Create and manage geofences" },
   ];
   const perms = await db.insert(schema.permissions).values(permValues).returning();
 
@@ -49,21 +52,21 @@ async function seed() {
     role: "super_admin",
   });
 
-  // Facilities
+  // Facilities with extended fields
   const facilityData = [
-    { name: "Kano", latitude: 12.0022, longitude: 8.5224, sector: "Oil & Gas", region: "North West" },
-    { name: "Kaduna", latitude: 10.5105, longitude: 7.435, sector: "Oil & Gas", region: "North West" },
-    { name: "Abuja", latitude: 9.0765, longitude: 7.4913, sector: "Refinery", region: "FCT" },
-    { name: "Minna", latitude: 9.6143, longitude: 6.5569, sector: "Oil & Gas", region: "North Central" },
-    { name: "Lafia", latitude: 8.4855, longitude: 8.5153, sector: "Oil & Gas", region: "North Central" },
-    { name: "Enugu", latitude: 6.4483, longitude: 7.5083, sector: "Coal Mining", region: "South East" },
-    { name: "Ilorin", latitude: 8.4799, longitude: 4.5484, sector: "Oil & Gas", region: "North Central" },
-    { name: "Ibadan", latitude: 7.3775, longitude: 3.947, sector: "Waste Management", region: "South West" },
-    { name: "Onitsha", latitude: 6.1527, longitude: 6.7865, sector: "Oil & Gas", region: "South East" },
-    { name: "Port Harcourt", latitude: 4.7774, longitude: 7.0085, sector: "Refinery", region: "South South" },
-    { name: "Oyo", latitude: 7.8504, longitude: 3.9312, sector: "Agriculture", region: "South West" },
-    { name: "Ado Ekiti", latitude: 7.6163, longitude: 5.2181, sector: "Oil & Gas", region: "South West" },
-    { name: "Makurdi", latitude: 7.7322, longitude: 8.5307, sector: "Oil & Gas", region: "North Central" },
+    { name: "Kano Gas Plant", latitude: 12.0022, longitude: 8.5224, sector: "Oil & Gas", region: "North West", state: "Kano", lga: "Kano Municipal", operator: "NNPC", facilityType: "Gas Plant" },
+    { name: "Kaduna Refinery", latitude: 10.5105, longitude: 7.435, sector: "Oil & Gas", region: "North West", state: "Kaduna", lga: "Kaduna South", operator: "NNPC", facilityType: "Refinery" },
+    { name: "Abuja Gas Hub", latitude: 9.0765, longitude: 7.4913, sector: "Refinery", region: "FCT", state: "FCT", lga: "Abuja Municipal", operator: "NIPCO", facilityType: "Gas Hub" },
+    { name: "Minna Flow Station", latitude: 9.6143, longitude: 6.5569, sector: "Oil & Gas", region: "North Central", state: "Niger", lga: "Chanchaga", operator: "Shell", facilityType: "Flow Station" },
+    { name: "Lafia Processing Facility", latitude: 8.4855, longitude: 8.5153, sector: "Oil & Gas", region: "North Central", state: "Nasarawa", lga: "Lafia", operator: "TotalEnergies", facilityType: "Processing" },
+    { name: "Enugu Coal Terminal", latitude: 6.4483, longitude: 7.5083, sector: "Coal Mining", region: "South East", state: "Enugu", lga: "Enugu South", operator: "Nigerian Coal Corp", facilityType: "Terminal" },
+    { name: "Ilorin Depot", latitude: 8.4799, longitude: 4.5484, sector: "Oil & Gas", region: "North Central", state: "Kwara", lga: "Ilorin South", operator: "Mobil", facilityType: "Depot", oilBlock: "OML-23" },
+    { name: "Ibadan Waste Plant", latitude: 7.3775, longitude: 3.947, sector: "Waste Management", region: "South West", state: "Oyo", lga: "Ibadan North", operator: "WeCyclers", facilityType: "Waste Plant" },
+    { name: "Onitsha Tank Farm", latitude: 6.1527, longitude: 6.7865, sector: "Oil & Gas", region: "South East", state: "Anambra", lga: "Onitsha North", operator: "MRS Oil", facilityType: "Tank Farm" },
+    { name: "Port Harcourt Refinery", latitude: 4.7774, longitude: 7.0085, sector: "Refinery", region: "South South", state: "Rivers", lga: "Eleme", operator: "NNPC", facilityType: "Refinery", oilBlock: "OML-11" },
+    { name: "Oyo Agri Hub", latitude: 7.8504, longitude: 3.9312, sector: "Agriculture", region: "South West", state: "Oyo", lga: "Oyo West", operator: "IITA", facilityType: "Agricultural" },
+    { name: "Ado Ekiti Gas Station", latitude: 7.6163, longitude: 5.2181, sector: "Oil & Gas", region: "South West", state: "Ekiti", lga: "Ado-Ekiti", operator: "Conoil", facilityType: "Gas Station" },
+    { name: "Makurdi Pipeline Junction", latitude: 7.7322, longitude: 8.5307, sector: "Oil & Gas", region: "North Central", state: "Benue", lga: "Makurdi", operator: "NNPC", facilityType: "Pipeline Junction", oilBlock: "OPL-245" },
   ];
 
   const insertedFacilities = await db.insert(schema.facilities).values(facilityData).returning();

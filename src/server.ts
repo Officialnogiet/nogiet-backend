@@ -5,6 +5,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./db/schema/index";
 import { connectRedis } from "./config/redis";
+import { CronService } from "./services/cron.service";
 
 async function main() {
   const pool = new pg.Pool({ connectionString: env.DATABASE_URL });
@@ -12,14 +13,18 @@ async function main() {
 
   await connectRedis();
 
-  const app = await buildApp(db);
+  const { fastify, emissionService } = await buildApp(db);
+
+  const cronService = new CronService(emissionService);
+  cronService.start();
 
   try {
-    await app.listen({ port: env.PORT, host: env.HOST });
-    app.log.info(`Server running at http://${env.HOST}:${env.PORT}`);
-    app.log.info(`Docs at http://${env.HOST}:${env.PORT}/docs`);
+    await fastify.listen({ port: env.PORT, host: env.HOST });
+    fastify.log.info(`Server running at http://${env.HOST}:${env.PORT}`);
+    fastify.log.info(`Docs at http://${env.HOST}:${env.PORT}/docs`);
   } catch (err) {
-    app.log.error(err);
+    fastify.log.error(err);
+    cronService.stop();
     process.exit(1);
   }
 }

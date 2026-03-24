@@ -62,3 +62,22 @@ export interface CarbonMapperPlume {
   datetime: string;
   scene_id: string;
 }
+
+export type SatelliteProvider = "carbon_mapper" | "methansat" | "imeo" | "tropomi";
+
+export interface NormalizedSource {
+  id: string;
+  name: string;
+  provider: SatelliteProvider;
+  latitude: number;
+  longitude: number;
+  emissionRate: number;
+  gas: string;
+  sector: string;
+  instrument: string;
+  persistence: number;
+  plumeCount: number;
+  firstDetected: string;
+  lastDetected: string;
+  metadata: Record<string, unknown>;
+}

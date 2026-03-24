@@ -4,14 +4,15 @@ export const createUserSchema = z.object({
   fullName: z.string().min(2, "Full name is required"),
   email: z.string().email("Invalid email address"),
   phone: z.string().optional(),
-  role: z.enum(["super_admin", "admin", "member"]).default("member"),
+  role: z.enum(["super_admin", "admin", "member", "facility_owner"]).default("member"),
+  tempPassword: z.string().min(6).optional(),
 });
 
 export const updateUserSchema = z.object({
   fullName: z.string().min(2).optional(),
   email: z.string().email().optional(),
   phone: z.string().optional(),
-  role: z.enum(["super_admin", "admin", "member"]).optional(),
+  role: z.enum(["super_admin", "admin", "member", "facility_owner"]).optional(),
 });
 
 export const userIdParamSchema = z.object({
