@@ -24,7 +24,6 @@ import { RoleService } from "./services/role.service";
 import { EmailService } from "./services/email/email.service";
 import { SmsService } from "./services/sms/sms.service";
 import { CarbonMapperService } from "./services/third-party/carbon-mapper.service";
-import { MethansatService } from "./services/third-party/methansat.service";
 import { ImeoService } from "./services/third-party/imeo.service";
 import { TropomiService } from "./services/third-party/tropomi.service";
 import { SatelliteAggregatorService } from "./services/third-party/satellite-aggregator.service";
@@ -102,12 +101,11 @@ export async function buildApp(db: any): Promise<AppContext> {
   const emailService = new EmailService();
   const smsService = new SmsService();
   const carbonMapper = new CarbonMapperService();
-  const methansatService = new MethansatService();
   const imeoService = new ImeoService();
   const tropomiService = new TropomiService();
   const r2 = new CloudflareR2Service();
   const cacheService = new CacheService();
-  const aggregator = new SatelliteAggregatorService(carbonMapper, methansatService, imeoService, tropomiService, cacheService);
+  const aggregator = new SatelliteAggregatorService(carbonMapper, imeoService, tropomiService, cacheService);
 
   const authService = new AuthService(userRepo, emailService, smsService, fastify);
   const userService = new UserService(userRepo, emailService);

@@ -18,10 +18,6 @@ const envSchema = z.object({
   CARBON_MAPPER_EMAIL: z.string().optional(),
   CARBON_MAPPER_PASSWORD: z.string().optional(),
 
-  // MethaneSAT / EMIT NASA
-  METHANSAT_API_URL: z.string().optional(),
-  METHANSAT_API_KEY: z.string().optional(),
-
   // UNEP IMEO
   IMEO_API_URL: z.string().optional(),
   IMEO_API_KEY: z.string().optional(),

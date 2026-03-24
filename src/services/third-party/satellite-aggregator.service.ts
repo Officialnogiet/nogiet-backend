@@ -1,6 +1,5 @@
 import { CarbonMapperService, NIGERIA_BBOX, isInsideBBox } from "./carbon-mapper.service";
 import type { BBox } from "./carbon-mapper.service";
-import { MethansatService } from "./methansat.service";
 import { ImeoService } from "./imeo.service";
 import { TropomiService } from "./tropomi.service";
 import { CacheService } from "../cache.service";
@@ -30,7 +29,6 @@ function carbonMapperToNormalized(src: CarbonMapperSource): NormalizedSource {
 export class SatelliteAggregatorService {
   constructor(
     private carbonMapper: CarbonMapperService,
-    private methansat: MethansatService,
     private imeo: ImeoService,
     private tropomi: TropomiService,
     private cache: CacheService,
@@ -39,7 +37,6 @@ export class SatelliteAggregatorService {
   get configuredProviders(): SatelliteProvider[] {
     const providers: SatelliteProvider[] = [];
     if (this.carbonMapper.isConfigured) providers.push("carbon_mapper");
-    if (this.methansat.isConfigured) providers.push("methansat");
     if (this.imeo.isConfigured) providers.push("imeo");
     if (this.tropomi.isConfigured) providers.push("tropomi");
     return providers;
@@ -99,15 +96,6 @@ export class SatelliteAggregatorService {
             console.warn("[Aggregator] CarbonMapper failed:", err.message);
             return [];
           })
-      );
-    }
-
-    if (shouldFetch("methansat") && this.methansat.isConfigured) {
-      fetchTasks.push(
-        this.methansat.fetchSources(NIGERIA_BBOX).catch(err => {
-          console.warn("[Aggregator] MethaneSAT failed:", err.message);
-          return [];
-        })
       );
     }
 

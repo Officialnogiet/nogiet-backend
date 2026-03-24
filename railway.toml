@@ -1,8 +1,7 @@
 [build]
-  buildCommand = "npm install && npm run build"
+  buildCommand = "npm install"
 
 [deploy]
-  # Start the server (run migrations manually or add back when schema changes)
   startCommand = "npm start"
   # Health check
   healthcheckPath = "/health"

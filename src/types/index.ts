@@ -63,7 +63,7 @@ export interface CarbonMapperPlume {
   scene_id: string;
 }
 
-export type SatelliteProvider = "carbon_mapper" | "methansat" | "imeo" | "tropomi";
+export type SatelliteProvider = "carbon_mapper" | "imeo" | "tropomi";
 
 export interface NormalizedSource {
   id: string;
