@@ -1,0 +1,12 @@
+[build]
+  buildCommand = "npm install && npm run build"
+
+[deploy]
+  # Start the server (run migrations manually or add back when schema changes)
+  startCommand = "npm start"
+  # Health check
+  healthcheckPath = "/health"
+  healthcheckTimeout = 60
+  # Restart on failure
+  restartPolicyType = "ON_FAILURE"
+  restartPolicyMaxRetries = 3
