@@ -2,7 +2,7 @@
   buildCommand = "npm install"
 
 [deploy]
-  startCommand = "npm start"
+  startCommand = "npx tsx src/server.ts"
   # Health check
   healthcheckPath = "/health"
   healthcheckTimeout = 60
