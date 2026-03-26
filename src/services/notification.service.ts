@@ -1,8 +1,10 @@
 import { EmissionRepository } from "../repositories/emission.repository";
 import { EmailService } from "./email/email.service";
+import { SmsService } from "./sms/sms.service";
 import { UserRepository } from "../repositories/user.repository";
 import type { CarbonMapperSource } from "../types/index";
 import type { Server as SocketIOServer } from "socket.io";
+import { env } from "../config/env";
 
 export interface AlertThresholdConfig {
   minEmissionRate: number;
@@ -32,6 +34,7 @@ export class NotificationService {
   constructor(
     private emissionRepo: EmissionRepository,
     private emailService?: EmailService,
+    private smsService?: SmsService,
     private userRepo?: UserRepository,
   ) {}
 
@@ -71,9 +74,17 @@ export class NotificationService {
         io.emit("alert:new", alert);
       }
 
-      if (this.emailAlertsEnabled && this.emailService && this.userRepo && (severity === "critical" || severity === "high")) {
-        this.sendAlertEmails(alert.title, alert.description ?? "").catch(err =>
-          console.warn("[NotificationService] email send failed:", err.message),
+      const shouldNotify = severity === "critical" || severity === "high";
+
+      if (shouldNotify && this.userRepo) {
+        if (this.emailAlertsEnabled && this.emailService) {
+          this.sendAlertEmails(alert.title, alert.description ?? "").catch(err =>
+            console.warn("[NotificationService] email send failed:", err.message),
+          );
+        }
+
+        this.sendAlertSMS(src.source_name, src.emission_rate).catch(err =>
+          console.warn("[NotificationService] SMS send failed:", err.message),
         );
       }
 
@@ -92,6 +103,21 @@ export class NotificationService {
       }
     } catch (err: any) {
       console.warn("[NotificationService] failed to send alert emails:", err.message);
+    }
+  }
+
+  private async sendAlertSMS(facilityName: string, emissionRate: number) {
+    if (!this.smsService || !this.userRepo) return;
+    try {
+      const admins = await this.userRepo.findAdminUsers();
+      const frontendUrl = env.FRONTEND_URL || "https://nogiet.netlify.app";
+      for (const admin of admins) {
+        if (!admin.phone) continue;
+        const rateStr = `${emissionRate.toFixed(1)} kg/hr`;
+        await this.smsService.sendAlertNotification(admin.phone, facilityName, rateStr);
+      }
+    } catch (err: any) {
+      console.warn("[NotificationService] failed to send alert SMS:", err.message);
     }
   }
 }

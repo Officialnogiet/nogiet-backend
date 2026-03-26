@@ -109,7 +109,7 @@ export async function buildApp(db: any): Promise<AppContext> {
 
   const authService = new AuthService(userRepo, emailService, smsService, fastify);
   const userService = new UserService(userRepo, emailService);
-  const emissionService = new EmissionService(emissionRepo, carbonMapper, cacheService, aggregator, emailService, userRepo);
+  const emissionService = new EmissionService(emissionRepo, carbonMapper, cacheService, aggregator, emailService, smsService, userRepo);
   const roleService = new RoleService(roleRepo);
 
   const authController = new AuthController(authService);

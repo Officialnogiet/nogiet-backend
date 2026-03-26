@@ -271,6 +271,19 @@ export class EmissionRepository {
       .orderBy(desc(sql`sum(${groundMeasurements.methaneReading})`))
       .limit(10);
 
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const dailyTrend = await this.db
+      .select({
+        day: sql<string>`to_char(${alerts.createdAt}, 'Dy')`,
+        dayDate: sql<string>`${alerts.createdAt}::date`,
+        totalRate: sql<number>`coalesce(sum(${alerts.emissionRate}), 0)`,
+        count: sql<number>`count(*)`,
+      })
+      .from(alerts)
+      .where(gte(alerts.createdAt, sevenDaysAgo))
+      .groupBy(sql`${alerts.createdAt}::date, to_char(${alerts.createdAt}, 'Dy')`)
+      .orderBy(sql`${alerts.createdAt}::date`);
+
     return {
       totalFacilities: Number(facilityCount?.count ?? 0),
       totalMeasurements: Number(measurementCount?.count ?? 0),
@@ -282,6 +295,12 @@ export class EmissionRepository {
         facilityName: r.facilityName,
         totalReading: Number(r.totalReading ?? 0),
         measurementCount: Number(r.measurementCount ?? 0),
+      })),
+      dailyTrend: dailyTrend.map((r: any) => ({
+        day: r.day,
+        date: r.dayDate,
+        totalRate: Number(r.totalRate ?? 0),
+        count: Number(r.count ?? 0),
       })),
     };
   }

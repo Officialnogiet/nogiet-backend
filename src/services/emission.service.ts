@@ -8,6 +8,7 @@ import type { CarbonMapperSource, NormalizedSource, SatelliteProvider } from "..
 import { CacheService } from "./cache.service";
 import { NotificationService } from "./notification.service";
 import { EmailService } from "./email/email.service";
+import { SmsService } from "./sms/sms.service";
 import type {
   SubmitGroundDataInput,
   EmissionFilterInput,
@@ -34,9 +35,10 @@ export class EmissionService {
     private cache: CacheService,
     private aggregator: SatelliteAggregatorService,
     emailService?: EmailService,
+    smsService?: SmsService,
     userRepo?: UserRepository,
   ) {
-    this.notificationService = new NotificationService(emissionRepo, emailService, userRepo);
+    this.notificationService = new NotificationService(emissionRepo, emailService, smsService, userRepo);
   }
 
   setAlertThreshold(minRate: number) {

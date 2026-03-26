@@ -20,7 +20,7 @@ export class UserRepository {
     email: string;
     passwordHash: string;
     phone?: string;
-    role?: "super_admin" | "admin" | "member" | "facility_owner";
+    role?: "super_admin" | "admin" | "regulator" | "facility_owner" | "viewer" | "member";
   }) {
     const [user] = await this.db.insert(users).values(data).returning();
     return user;
@@ -68,9 +68,9 @@ export class UserRepository {
 
   async findAdminUsers() {
     return this.db
-      .select({ id: users.id, email: users.email, fullName: users.fullName, role: users.role })
+      .select({ id: users.id, email: users.email, fullName: users.fullName, role: users.role, phone: users.phone })
       .from(users)
-      .where(or(eq(users.role, "super_admin"), eq(users.role, "admin")));
+      .where(or(eq(users.role, "super_admin"), eq(users.role, "admin"), eq(users.role, "regulator")));
   }
 
   async updateLastLogin(id: string) {
