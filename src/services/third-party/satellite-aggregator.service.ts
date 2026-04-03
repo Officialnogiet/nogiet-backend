@@ -22,7 +22,9 @@ function carbonMapperToNormalized(src: CarbonMapperSource): NormalizedSource {
     plumeCount: src.plume_count,
     firstDetected: src.first_detected,
     lastDetected: src.last_detected,
-    metadata: {},
+    metadata: {
+      emissionUncertainty: src.emission_uncertainty ?? 0,
+    },
   };
 }
 

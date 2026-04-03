@@ -44,6 +44,7 @@ export interface CarbonMapperSource {
   sector: string;
   gas: string;
   emission_rate: number;
+  emission_uncertainty: number;
   persistence: number;
   plume_count: number;
   instrument: string;
@@ -57,6 +58,7 @@ export interface CarbonMapperPlume {
   lat: number;
   lon: number;
   emission_rate: number;
+  ime: number;
   gas: string;
   instrument: string;
   datetime: string;
