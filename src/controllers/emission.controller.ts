@@ -203,6 +203,28 @@ export class EmissionController {
     }
   };
 
+  getImeoPlumeImage = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { plumeId } = request.params as { plumeId: string };
+      const image = await this.emissionService.getImeoPlumeImage(plumeId);
+      if (!image) return error(reply, "Plume image not available", 404);
+      reply.header("Content-Type", image.contentType);
+      reply.header("Cache-Control", "public, max-age=86400");
+      return reply.send(image.bytes);
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  getImeoLastUpdate = async (_request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const lastUpdate = await this.emissionService.getImeoLastUpdate();
+      return success(reply, { lastUpdate });
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
   getComparisonData = async (request: FastifyRequest, reply: FastifyReply) => {
     try {
       const { id } = request.params as { id: string };

@@ -72,7 +72,7 @@ export class SatelliteAggregatorService {
     const cacheKey = `nogiet:sat:aggregated:${gasType}:${providerFilter ?? "all"}`;
     await this.cache.del(cacheKey);
 
-    const results = await this.fetchFromProviders(providerFilter, gasType);
+    const results = await this.fetchFromProviders(providerFilter, gasType, /* forceRefresh */ true);
 
     if (results.length > 0) {
       await this.cache.set(cacheKey, results, ONE_DAY_SEC);
@@ -84,6 +84,7 @@ export class SatelliteAggregatorService {
   private async fetchFromProviders(
     providerFilter?: SatelliteProvider,
     gasType: string = "CH4",
+    forceRefresh: boolean = false,
   ): Promise<NormalizedSource[]> {
     const fetchTasks: Promise<NormalizedSource[]>[] = [];
 
@@ -102,8 +103,11 @@ export class SatelliteAggregatorService {
     }
 
     if (shouldFetch("imeo") && this.imeo.isConfigured) {
+      const imeoCall = forceRefresh
+        ? this.imeo.refreshSources(NIGERIA_BBOX, gasType)
+        : this.imeo.fetchSources(NIGERIA_BBOX, gasType);
       fetchTasks.push(
-        this.imeo.fetchSources(NIGERIA_BBOX).catch(err => {
+        imeoCall.catch(err => {
           console.warn("[Aggregator] IMEO failed:", err.message);
           return [];
         })

@@ -18,9 +18,40 @@ const envSchema = z.object({
   CARBON_MAPPER_EMAIL: z.string().optional(),
   CARBON_MAPPER_PASSWORD: z.string().optional(),
 
-  // UNEP IMEO
-  IMEO_API_URL: z.string().optional(),
+  // UNEP IMEO v2 (Eye on Methane — https://methanedata.unep.org/api/docs)
+  IMEO_API_URL: z
+    .string()
+    .default("https://methanedata.unep.org/api/v2"),
+  /** API token / JWT from IMEO docs Authorize — see IMEO_AUTH_MODE. */
   IMEO_API_KEY: z.string().optional(),
+  /**
+   * bearer (default): Authorization: Bearer <token> as documented in IMEO Swagger.
+   * x-api-key: send X-API-Key only.
+   * both: send Authorization: Bearer + X-API-Key on every request.
+   * auto: Bearer first; on 401/403 retry with X-API-Key.
+   */
+  IMEO_AUTH_MODE: z.enum(["bearer", "x-api-key", "both", "auto"]).optional().default("bearer"),
+  /** When true, logs IMEO response envelope + first raw record (server logs only). */
+  IMEO_LOG_RESPONSE: z.coerce.boolean().optional().default(false),
+  /** Optional outbound HTTP/HTTPS proxy used for IMEO requests (Cloudflare bypass). */
+  IMEO_PROXY_URL: z.string().optional(),
+  /**
+   * Cloudflare clearance cookie value(s). Paste from a browser that solved the CF challenge.
+   * Example: "cf_clearance=...; __cf_bm=..." — sent verbatim as the Cookie header.
+   */
+  IMEO_COOKIE: z.string().optional(),
+  /**
+   * ISO 3166-1 alpha-3 country code(s) to retain after fetching IMEO globally.
+   * Example: `NGA` (Nigeria only), `NGA,CMR,NER` (Nigeria + neighbours).
+   * Leave blank or set `*`/`ALL` to disable country filtering.
+   */
+  IMEO_COUNTRY_FILTER: z.string().optional().default("NGA"),
+  /**
+   * Comma-separated sector substrings to retain (case-insensitive substring match).
+   * Default: `oil and gas` — keeps any record whose `sector` contains "oil and gas".
+   * Set `*` or `ALL` to disable sector filtering.
+   */
+  IMEO_SECTOR_FILTER: z.string().optional().default("oil and gas"),
 
   // Sentinel-5P TROPOMI
   TROPOMI_API_URL: z.string().optional(),

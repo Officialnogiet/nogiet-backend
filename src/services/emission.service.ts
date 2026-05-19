@@ -4,6 +4,7 @@ import { UserRepository } from "../repositories/user.repository";
 import { CarbonMapperService, bboxCacheKey, NIGERIA_BBOX, isInsideBBox } from "./third-party/carbon-mapper.service";
 import type { BBox } from "./third-party/carbon-mapper.service";
 import { SatelliteAggregatorService } from "./third-party/satellite-aggregator.service";
+import { ImeoService, type ImeoPlumeImage } from "./third-party/imeo.service";
 import type { CarbonMapperSource, NormalizedSource, SatelliteProvider } from "../types/index";
 import { CacheService } from "./cache.service";
 import { NotificationService } from "./notification.service";
@@ -37,6 +38,7 @@ export class EmissionService {
     emailService?: EmailService,
     smsService?: SmsService,
     userRepo?: UserRepository,
+    private imeo?: ImeoService,
   ) {
     this.notificationService = new NotificationService(emissionRepo, emailService, smsService, userRepo);
   }
@@ -202,6 +204,7 @@ export class EmissionService {
             sector: s.sector,
             gas: s.gas,
             emission_rate: s.emissionRate,
+            emission_uncertainty: Number(s.metadata?.emissionUncertainty ?? 0) || 0,
             persistence: s.persistence,
             plume_count: s.plumeCount,
             instrument: s.instrument,
@@ -253,9 +256,19 @@ export class EmissionService {
   // ---- Satellite plumes ----
 
   async getSatellitePlumes(sourceId: string) {
-    if (!this.carbonMapper.isConfigured) {
-      return [];
+    // IMEO ids look like "imeo-<id_plume>" — the trailing token may itself be a plume id
+    // or a source id. Try by-source first; if empty, return raw row from cached features.
+    if (sourceId.startsWith("imeo-") && this.imeo?.isConfigured) {
+      const tail = sourceId.slice("imeo-".length);
+      try {
+        return await this.imeo.getPlumesBySource(tail);
+      } catch (err: any) {
+        console.error("[Satellite] IMEO plumes lookup failed for", sourceId, err.message);
+        return [];
+      }
     }
+
+    if (!this.carbonMapper.isConfigured) return [];
     try {
       return await this.carbonMapper.getPlumes(sourceId);
     } catch (err: any) {
@@ -264,7 +277,27 @@ export class EmissionService {
     }
   }
 
+  async getImeoPlumeImage(plumeId: string): Promise<ImeoPlumeImage | null> {
+    if (!this.imeo?.isConfigured) return null;
+    return this.imeo.getPlumeImage(plumeId);
+  }
+
+  async getImeoLastUpdate(): Promise<string | null> {
+    if (!this.imeo?.isConfigured) return null;
+    return this.imeo.getLastUpdate();
+  }
+
   // ---- Comparison ----
+
+  /**
+   * Hard upper bound for the satellite fetch in `getComparisonData`. The previous
+   * version had no timeout and relied solely on Carbon Mapper, so any hang in the
+   * upstream API would lock the whole comparison request for the user. Eight
+   * seconds gives the aggregator (which has its own 24h Redis cache + 7-day
+   * stale fallback) plenty of headroom while guaranteeing the endpoint always
+   * returns within a reasonable time.
+   */
+  private static readonly COMPARISON_FETCH_TIMEOUT_MS = 8000;
 
   async getComparisonData(
     facilityId: string,
@@ -276,40 +309,87 @@ export class EmissionService {
     const groundData = await this.getGroundData(facilityId, startDate, endDate);
     const facility = await this.getFacilityById(facilityId);
 
-    let allNearbySources: (CarbonMapperSource & { distanceKm: number })[] = [];
-    let satelliteData: (CarbonMapperSource & { distanceKm: number })[] = [];
-    let comparisonMeta = { mode, radiusKm: 0, matchCount: 0, maxSearchKm: maxDistanceKm ?? 300 };
+    type ComparisonSource = CarbonMapperSource & {
+      distanceKm: number;
+      provider: SatelliteProvider;
+      instrument?: string;
+    };
+    let allNearbySources: ComparisonSource[] = [];
+    let satelliteData: ComparisonSource[] = [];
+    const comparisonMeta = {
+      mode,
+      radiusKm: 0,
+      matchCount: 0,
+      maxSearchKm: maxDistanceKm ?? 300,
+      satelliteAvailable: false as boolean,
+    };
 
-    if (this.carbonMapper.isConfigured) {
-      try {
-        const cacheKey = bboxCacheKey("CH4");
-        const allSources = await this.getAllSourcesCached("CH4", cacheKey, {});
-        const nigeriaSources = allSources.filter(s => isInsideBBox(s.lat, s.lon, NIGERIA_BBOX));
-
-        const withDist = nigeriaSources.map(s => ({
-          ...s,
-          distanceKm: Math.round(
-            Math.sqrt(
-              Math.pow((s.lat - facility.latitude) * 111, 2) +
-              Math.pow((s.lon - facility.longitude) * 111 * Math.cos(facility.latitude * Math.PI / 180), 2)
-            )
+    // Fetch from the resilient aggregator (covers Carbon Mapper + IMEO + TROPOMI).
+    // Wrapped in a timeout so a slow upstream can't lock the user's UI.
+    let normalized: NormalizedSource[] = [];
+    try {
+      normalized = await Promise.race([
+        this.aggregator.fetchAllSources(NIGERIA_BBOX),
+        new Promise<NormalizedSource[]>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("comparison satellite fetch timeout")),
+            EmissionService.COMPARISON_FETCH_TIMEOUT_MS,
           ),
-        })).sort((a, b) => a.distanceKm - b.distanceKm);
+        ),
+      ]);
+      comparisonMeta.satelliteAvailable = true;
+    } catch (err) {
+      console.warn(
+        "[Comparison] satellite aggregator unavailable, returning ground data only:",
+        err instanceof Error ? err.message : err,
+      );
+      normalized = [];
+    }
 
-        const searchRadius = maxDistanceKm ?? 300;
-        allNearbySources = withDist.filter(s => s.distanceKm <= searchRadius);
+    if (normalized.length > 0) {
+      const withDist: ComparisonSource[] = normalized.map((s) => {
+        const distanceKm = Math.round(
+          Math.sqrt(
+            Math.pow((s.latitude - facility.latitude) * 111, 2) +
+              Math.pow(
+                (s.longitude - facility.longitude) *
+                  111 *
+                  Math.cos(facility.latitude * Math.PI / 180),
+                2,
+              ),
+          ),
+        );
+        return {
+          // Legacy CarbonMapperSource shape preserved for the existing frontend.
+          source_name: s.name,
+          lat: s.latitude,
+          lon: s.longitude,
+          sector: s.sector,
+          gas: s.gas,
+          emission_rate: s.emissionRate,
+          emission_uncertainty: Number(s.metadata?.emissionUncertainty ?? 0) || 0,
+          persistence: s.persistence,
+          plume_count: s.plumeCount,
+          instrument: s.instrument,
+          first_detected: s.firstDetected,
+          last_detected: s.lastDetected,
+          // New comparison-specific fields:
+          distanceKm,
+          provider: s.provider,
+        };
+      }).sort((a, b) => a.distanceKm - b.distanceKm);
 
-        if (mode === "nearest") {
-          satelliteData = allNearbySources.slice(0, 1);
-          comparisonMeta.radiusKm = satelliteData[0]?.distanceKm ?? 0;
-          comparisonMeta.matchCount = 1;
-        } else {
-          satelliteData = allNearbySources;
-          comparisonMeta.radiusKm = searchRadius;
-          comparisonMeta.matchCount = allNearbySources.length;
-        }
-      } catch {
-        // CarbonMapper might be unavailable
+      const searchRadius = maxDistanceKm ?? 300;
+      allNearbySources = withDist.filter((s) => s.distanceKm <= searchRadius);
+
+      if (mode === "nearest") {
+        satelliteData = allNearbySources.slice(0, 1);
+        comparisonMeta.radiusKm = satelliteData[0]?.distanceKm ?? 0;
+        comparisonMeta.matchCount = satelliteData.length;
+      } else {
+        satelliteData = allNearbySources;
+        comparisonMeta.radiusKm = searchRadius;
+        comparisonMeta.matchCount = allNearbySources.length;
       }
     }
 

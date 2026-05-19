@@ -109,6 +109,16 @@ export function emissionRoutes(fastify: FastifyInstance, controller: EmissionCon
     handler: controller.getSatellitePlumes,
   });
 
+  fastify.get("/satellite/imeo/plume-image/:plumeId", {
+    preHandler: [authenticate],
+    handler: controller.getImeoPlumeImage,
+  });
+
+  fastify.get("/satellite/imeo/last-update", {
+    preHandler: [authenticate],
+    handler: controller.getImeoLastUpdate,
+  });
+
   fastify.get("/comparison/:id", {
     preHandler: [authenticate, validate(facilityIdParamSchema, "params")],
     handler: controller.getComparisonData,

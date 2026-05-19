@@ -101,15 +101,16 @@ export async function buildApp(db: any): Promise<AppContext> {
   const emailService = new EmailService();
   const smsService = new SmsService();
   const carbonMapper = new CarbonMapperService();
-  const imeoService = new ImeoService();
   const tropomiService = new TropomiService();
   const r2 = new CloudflareR2Service();
   const cacheService = new CacheService();
+  // IMEO mirrors CarbonMapper: persistent Redis cache + stale-fallback for resilience.
+  const imeoService = new ImeoService(cacheService);
   const aggregator = new SatelliteAggregatorService(carbonMapper, imeoService, tropomiService, cacheService);
 
   const authService = new AuthService(userRepo, emailService, smsService, fastify);
   const userService = new UserService(userRepo, emailService);
-  const emissionService = new EmissionService(emissionRepo, carbonMapper, cacheService, aggregator, emailService, smsService, userRepo);
+  const emissionService = new EmissionService(emissionRepo, carbonMapper, cacheService, aggregator, emailService, smsService, userRepo, imeoService);
   const roleService = new RoleService(roleRepo);
 
   const authController = new AuthController(authService);
