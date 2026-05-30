@@ -72,6 +72,23 @@ const envSchema = z.object({
   TROPOMI_MAX_RESULTS: z.coerce.number().int().positive().default(50),
   /** Optional bbox override; defaults to NIGERIA_BBOX from carbon-mapper.service. */
   TROPOMI_BBOX: z.string().optional(),
+  /**
+   * Sector label stamped onto every normalized TROPOMI source. CDSE L2 CH4
+   * scenes have no native sector classification (they're atmospheric column
+   * measurements, not point sources), but the rest of the platform filters
+   * by sector. Default `"Oil and Gas"` keeps TROPOMI in sync with NOGIET's
+   * monitoring scope; set to e.g. `"Satellite Coverage"` to opt out of the
+   * sector filter chain entirely.
+   */
+  TROPOMI_SECTOR_LABEL: z.string().default("Oil and Gas"),
+  /**
+   * When true (default), every TROPOMI scene whose AOI-clipped centroid does
+   * NOT fall inside a Nigerian oil block (OML / OPL / Block polygon) is
+   * dropped. This is the spatial implementation of "TROPOMI sources should
+   * only return oil & gas". Set false to keep all scenes regardless of
+   * acreage — useful when debugging coverage gaps.
+   */
+  TROPOMI_FILTER_TO_OIL_BLOCKS: z.coerce.boolean().optional().default(true),
   /** Emit the first raw CDSE record to server logs for debugging. */
   TROPOMI_LOG_RESPONSE: z.coerce.boolean().optional().default(false),
 

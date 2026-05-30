@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
+import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import { env } from "../../config/env";
 import type { NormalizedSource } from "../../types/index";
 import { NIGERIA_BBOX, isInsideBBox, type BBox } from "./carbon-mapper.service";
@@ -6,12 +10,16 @@ import { CacheService } from "../cache.service";
 const ONE_DAY_SEC = 24 * 60 * 60;
 const SEVEN_DAYS_SEC = 7 * ONE_DAY_SEC;
 
+// Cache key version. Bump when the normalized scene shape changes so old
+// payloads become unreachable and a fresh fetch repopulates Redis.
+// v3 = scenes now filtered to oil-block polygons (was sector-relabel only in v2).
+// v4 = each scene now carries metadata.oilBlock (matched polygon name + type + operator).
 export function tropomiCacheKey(): string {
-  return "nogiet:tropomi:scenes:CH4";
+  return "nogiet:tropomi:scenes:CH4:v4";
 }
 
 export function tropomiStaleKey(): string {
-  return "nogiet:tropomi:scenes:CH4:stale";
+  return "nogiet:tropomi:scenes:CH4:v4:stale";
 }
 
 /**
@@ -184,7 +192,8 @@ export class TropomiService {
 
   /**
    * Maps one CDSE OData product record to a NormalizedSource. Returns `null`
-   * when the record can't be placed on the map (no resolvable footprint).
+   * when the record can't be placed on the map OR when the scene's centroid
+   * doesn't fall inside any Nigerian oil block (sector restriction).
    *
    * Centroid strategy: TROPOMI L2 footprints are long N-S swaths (~2,600 km
    * wide) that span far beyond Nigeria. Naïve vertex-averaging would put the
@@ -194,6 +203,12 @@ export class TropomiService {
    * actually intersected the AOI. Falls back to the un-clipped centroid only
    * when zero vertices fall inside (edge cases where the swath grazes a
    * corner of the bbox).
+   *
+   * Oil-and-gas restriction: when `TROPOMI_FILTER_TO_OIL_BLOCKS` is true
+   * (default), we additionally require the resulting centroid to lie inside
+   * a Nigerian oil block polygon (OML / OPL / Block). This is the user-
+   * facing "only oil & gas sources" requirement — a TROPOMI swath that grazed
+   * northern Nigeria but never crossed any oil-producing acreage is dropped.
    */
   private normalize(raw: any): NormalizedSource | null {
     const id: string = raw?.Id ?? raw?.id ?? "";
@@ -207,6 +222,14 @@ export class TropomiService {
       footprintCentroid(raw?.GeoFootprint) ??
       wktCentroid(raw?.Footprint);
     if (!centroid) return null;
+
+    // Look up the containing oil block (if any). This serves two roles at once:
+    //   (a) the "oil & gas only" filter — drop scenes outside any oil block when
+    //       TROPOMI_FILTER_TO_OIL_BLOCKS is enabled
+    //   (b) provenance — keep the matched block's name/type/operator on the
+    //       NormalizedSource so the map popup can show "TROPOMI scene over OML 42"
+    const matchedBlock = findContainingOilBlock(centroid.lon, centroid.lat);
+    if (env.TROPOMI_FILTER_TO_OIL_BLOCKS && !matchedBlock) return null;
 
     const start: string = raw?.ContentDate?.Start ?? raw?.OriginDate ?? "";
     const end: string = raw?.ContentDate?.End ?? raw?.PublicationDate ?? start;
@@ -226,7 +249,11 @@ export class TropomiService {
       // placeholder. See the file header for upgrade paths.
       emissionRate: 0,
       gas: "CH4",
-      sector: "Satellite Coverage",
+      // L2 CH4 scenes have no native sector classification. We stamp the
+      // configured label (default "Oil and Gas") so TROPOMI participates in
+      // the platform's sector filter chain like the other providers — NOGIET
+      // only monitors O&G, so every scene over Nigeria is implicitly relevant.
+      sector: env.TROPOMI_SECTOR_LABEL,
       instrument: "TROPOMI/Sentinel-5P",
       persistence: 0,
       // We model each scene as a single "observation" so the map dot renders at
@@ -240,6 +267,15 @@ export class TropomiService {
         contentLength: raw?.ContentLength ?? 0,
         s3Path: raw?.S3Path ?? "",
         footprint: raw?.Footprint ?? null,
+        // Block context for the frontend popup — undefined for scenes that
+        // pre-date the v4 cache or were saved with filtering disabled.
+        oilBlock: matchedBlock
+          ? {
+              name: matchedBlock.name,
+              type: matchedBlock.type,
+              operator: matchedBlock.operator,
+            }
+          : null,
         note: "CDSE catalogue scene metadata. Centroid shown — see s3Path for raw NetCDF.",
       },
     };
@@ -333,4 +369,88 @@ function bboxToWktPolygon(bbox: BBox): string {
     `POLYGON((${minLon} ${minLat}, ${maxLon} ${minLat}, ` +
     `${maxLon} ${maxLat}, ${minLon} ${maxLat}, ${minLon} ${minLat}))`
   );
+}
+
+// ---------- Oil & Gas spatial filter ----------
+
+/**
+ * NOSDRA-derived oil block geometries (OML / OPL / Block polygons) covering
+ * the Nigerian onshore + offshore acreage. We load once at module init and
+ * keep in memory — ~250 KB, immutable for the life of the process. The same
+ * file is shipped to the frontend at `public/geojson/oil-blocks.geojson` so
+ * map rendering and backend filtering are guaranteed to agree on what counts
+ * as "oil & gas acreage".
+ */
+let oilBlocksCache: any[] | null = null;
+
+function loadOilBlockFeatures(): any[] {
+  if (oilBlocksCache) return oilBlocksCache;
+  try {
+    // `import.meta.url` lets this resolve under both tsx watch (dev) and the
+    // compiled `dist/` output (production) without bundler-specific paths.
+    const here = dirname(fileURLToPath(import.meta.url));
+    // tropomi.service.ts lives in src/services/third-party/, the GeoJSON in
+    // src/data/. Three `..` walks to `src/`, then into `data/`.
+    const path = join(here, "..", "..", "data", "oil-blocks.geojson");
+    const raw = readFileSync(path, "utf8");
+    const parsed = JSON.parse(raw) as { features?: any[] };
+    oilBlocksCache = Array.isArray(parsed?.features) ? parsed.features : [];
+    if (env.TROPOMI_LOG_RESPONSE) {
+      console.log(`[TROPOMI] Loaded ${oilBlocksCache.length} oil-block polygons for spatial filtering`);
+    }
+  } catch (err: any) {
+    console.warn(
+      "[TROPOMI] Failed to load oil-blocks.geojson — oil-block filtering disabled:",
+      err?.message ?? err,
+    );
+    oilBlocksCache = [];
+  }
+  return oilBlocksCache;
+}
+
+export interface MatchedOilBlock {
+  name: string;
+  type: string;
+  operator: string;
+}
+
+/**
+ * Finds the first oil block polygon containing `(lon, lat)` and returns its
+ * key descriptive properties — `null` if the point is outside every block.
+ *
+ * Walks the feature list and short-circuits on first hit; for ~300 NOSDRA
+ * polygons this is sub-millisecond per check, comfortably under the budget
+ * for ~50 scenes per refresh. Returning the matched block (rather than just
+ * a boolean) lets the caller stamp provenance onto the NormalizedSource so
+ * the frontend popup can show "TROPOMI scene over OML 42 (Shell)".
+ *
+ * Fail-open: when the GeoJSON file can't be loaded we synthesize a marker
+ * "Unknown Block" match so the TROPOMI layer isn't silently emptied. The
+ * underlying load failure is already logged once at startup.
+ */
+function findContainingOilBlock(lon: number, lat: number): MatchedOilBlock | null {
+  const features = loadOilBlockFeatures();
+  if (features.length === 0) {
+    return { name: "Unknown Block", type: "", operator: "" };
+  }
+  const point = {
+    type: "Feature" as const,
+    geometry: { type: "Point" as const, coordinates: [lon, lat] },
+    properties: {},
+  };
+  for (const feature of features) {
+    try {
+      if (booleanPointInPolygon(point as any, feature as any)) {
+        const props = (feature as any)?.properties ?? {};
+        return {
+          name: typeof props.name === "string" && props.name ? props.name : "Unknown Block",
+          type: typeof props.type === "string" ? props.type : "",
+          operator: typeof props.operator === "string" ? props.operator : "",
+        };
+      }
+    } catch {
+      // Malformed feature — skip and continue.
+    }
+  }
+  return null;
 }
