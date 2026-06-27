@@ -30,6 +30,7 @@
     "@fastify/rate-limit": "^10.1.1",
     "@fastify/swagger": "^9.3.1",
     "@fastify/swagger-ui": "^5.2.1",
+    "@google/earthengine": "^1.7.32",
     "@turf/boolean-point-in-polygon": "^7.3.4",
     "bcryptjs": "^2.4.3",
     "dotenv": "^17.3.1",

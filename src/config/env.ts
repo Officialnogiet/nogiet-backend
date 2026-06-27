@@ -24,6 +24,8 @@ const envSchema = z.object({
     .default("https://methanedata.unep.org/api/v2"),
   /** API token / JWT from IMEO docs Authorize — see IMEO_AUTH_MODE. */
   IMEO_API_KEY: z.string().optional(),
+  /** Client-provided NOGIET access token sent to IMEO as X-Nogiet-Token. */
+  IMEO_NOGIET_TOKEN: z.string().optional(),
   /**
    * bearer (default): Authorization: Bearer <token> as documented in IMEO Swagger.
    * x-api-key: send X-API-Key only.
@@ -91,6 +93,20 @@ const envSchema = z.object({
   TROPOMI_FILTER_TO_OIL_BLOCKS: z.coerce.boolean().optional().default(true),
   /** Emit the first raw CDSE record to server logs for debugging. */
   TROPOMI_LOG_RESPONSE: z.coerce.boolean().optional().default(false),
+  /** Optional percentile filter for elevated TROPOMI CH4 values. Blank/0 disables enhancement filtering. */
+  TROPOMI_ENHANCEMENT_PERCENTILE: z.coerce.number().min(0).max(1).optional().default(0),
+  /** Optional absolute CH4 floor for TROPOMI values. If omitted, percentile-only filtering is used. */
+  TROPOMI_MIN_CH4: z.coerce.number().positive().optional(),
+  /** Comma-separated oil-block types used as oil/gas-sector proxy for TROPOMI. Default OML = producing acreage. */
+  TROPOMI_OIL_BLOCK_TYPES: z.string().optional().default("OML"),
+  /** Comma-separated basins considered oil/gas industry acreage for TROPOMI filtering. */
+  TROPOMI_OIL_GAS_BASINS: z.string().optional().default("NIGER DLTA,BENIN EMBT,ANAM-NIGER,NIGER FAN,AVON FAN"),
+  /** Google Earth Engine service-account config for no-cost TROPOMI CH4 statistics. */
+  GEE_PROJECT_ID: z.string().optional(),
+  GEE_SERVICE_ACCOUNT_EMAIL: z.string().optional(),
+  GEE_PRIVATE_KEY: z.string().optional(),
+  /** Optional full service-account JSON string. Takes precedence over email/private key fields. */
+  GEE_PRIVATE_KEY_JSON: z.string().optional(),
 
   // Resend (Email)
   RESEND_API_KEY: z.string().optional(),

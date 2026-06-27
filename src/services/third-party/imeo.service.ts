@@ -13,7 +13,7 @@ export function imeoStaleKey(gasType: string): string {
   return `nogiet:imeo:plumes:${gasType}:stale`;
 }
 
-const ONE_DAY_SEC = 24 * 60 * 60;
+const TWO_HOURS_SEC = 2 * 60 * 60;
 const SEVEN_DAYS_SEC = 7 * 24 * 60 * 60;
 
 /**
@@ -27,7 +27,8 @@ const SEVEN_DAYS_SEC = 7 * 24 * 60 * 60;
  *  - GET /api/v2/plumes/image/{id_plume}     → plume satellite image (binary)
  *
  * Auth (v2): Swagger Authorize gives a Bearer JWT; some accounts only get an API key
- * (then `X-API-Key`). `IMEO_AUTH_MODE=auto` (default) tries Bearer, then `X-API-Key` on 401/403.
+ * (then `X-API-Key`). Client-specific access is passed as `X-Nogiet-Token` when configured.
+ * `IMEO_AUTH_MODE=auto` (default) tries Bearer, then `X-API-Key` on 401/403.
  *
  * Use host **methanedata.unep.org**. The hostname `api.methanedata.unep.org` often does not
  * resolve in DNS, which yields a useless Node error: `fetch failed`.
@@ -123,7 +124,7 @@ export class ImeoService {
   }
 
   get isConfigured(): boolean {
-    return !!env.IMEO_API_KEY?.trim();
+    return !!(env.IMEO_API_KEY?.trim() || env.IMEO_NOGIET_TOKEN?.trim());
   }
 
   // ---------- Auth ----------
@@ -131,6 +132,7 @@ export class ImeoService {
   private buildHeaders(scheme: "bearer" | "x-api-key" | "both"): Record<string, string> {
     // Strip whitespace and surrounding quotes accidentally included in the env value.
     const token = (env.IMEO_API_KEY ?? "").replace(/^['"\s]+|['"\s]+$/g, "");
+    const nogietToken = (env.IMEO_NOGIET_TOKEN ?? "").replace(/^['"\s]+|['"\s]+$/g, "");
     // X-Nigeria-Traffic identifies our requests in IMEO's Cloudflare logs (per UNEP support).
     // Honest UA + minimal headers — no browser spoofing, since UNEP wants to allowlist by tag.
     const common: Record<string, string> = {
@@ -138,7 +140,9 @@ export class ImeoService {
       "user-agent": "NOGIET-Backend/1.0 (Nigerian Oil & Gas Industry Emissions Tracker)",
       "X-Nigeria-Traffic": "1",
     };
+    if (nogietToken) common["X-Nogiet-Token"] = nogietToken;
     if (env.IMEO_COOKIE) common.cookie = env.IMEO_COOKIE;
+    if (!token) return common;
     if (scheme === "x-api-key") return { ...common, "X-API-Key": token };
     if (scheme === "both") return { ...common, Authorization: `Bearer ${token}`, "X-API-Key": token };
     return { ...common, Authorization: `Bearer ${token}` };
@@ -292,7 +296,7 @@ export class ImeoService {
     this.fetchPromise = this.fetchAllSourcesLive()
       .then(async (sources) => {
         if (this.cache && sources.length > 0) {
-          await this.cache.set(imeoCacheKey(gasType), sources, ONE_DAY_SEC);
+          await this.cache.set(imeoCacheKey(gasType), sources, TWO_HOURS_SEC);
           // Long-lived stale copy for resilience (CF blocks, IMEO downtime).
           await this.cache.set(imeoStaleKey(gasType), sources, SEVEN_DAYS_SEC);
         }

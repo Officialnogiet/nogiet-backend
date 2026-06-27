@@ -1,3 +1,6 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { EmissionRepository } from "../repositories/emission.repository";
 import type { FacilityFilters } from "../repositories/emission.repository";
 import { UserRepository } from "../repositories/user.repository";
@@ -13,9 +16,11 @@ import { SmsService } from "./sms/sms.service";
 import type {
   SubmitGroundDataInput,
   EmissionFilterInput,
+  AnalyticsReportInput,
   CreateFacilityInput,
   CreateAlertInput,
   UpdateFacilityThresholdInput,
+  UpdateOilBlockOverrideInput,
   CreateGeofenceInput,
   UpdateGeofenceInput,
   CreateFieldSubmissionInput,
@@ -23,9 +28,30 @@ import type {
 } from "../validations/emission.validation";
 import type { Server as SocketIOServer } from "socket.io";
 
-const ONE_DAY_SEC = 24 * 60 * 60;
+const TWO_HOURS_SEC = 2 * 60 * 60;
 const AGGREGATIONS_CACHE_TTL_SEC = 5 * 60; // 5 minutes
 const AGGREGATIONS_CACHE_KEY = "nogiet:emissions:aggregations:v1";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const OIL_BLOCK_OVERRIDES_PATH = join(__dirname, "..", "data", "oil-block-overrides.json");
+
+export interface OilBlockOverride {
+  blockId: string;
+  updatedBy: string;
+  updatedAt: string;
+  properties: {
+    name?: string;
+    type?: string;
+    status?: string;
+    operator?: string;
+    terrain?: string;
+    basin?: string;
+    area_sqkm?: string;
+    award_date?: string;
+    contract?: string;
+    rights?: string;
+  };
+}
 
 /**
  * Versioning the cache key (`:v1`) lets us bust the cache without a Redis flush
@@ -104,6 +130,66 @@ export class EmissionService {
 
   async getFacilityFilterOptions() {
     return this.emissionRepo.getDistinctFacilityValues();
+  }
+
+  async getOilBlockOverrides() {
+    return Object.values(await this.readOilBlockOverrides());
+  }
+
+  async updateOilBlockOverride(blockId: string, userId: string, input: UpdateOilBlockOverrideInput) {
+    const properties = this.normalizeOilBlockOverride(input);
+    if (Object.keys(properties).length === 0) {
+      throw Object.assign(new Error("At least one oil block field is required"), { statusCode: 400 });
+    }
+
+    const overrides = await this.readOilBlockOverrides();
+    const override: OilBlockOverride = {
+      blockId,
+      updatedBy: userId,
+      updatedAt: new Date().toISOString(),
+      properties,
+    };
+    overrides[blockId] = override;
+    await this.writeOilBlockOverrides(overrides);
+    return override;
+  }
+
+  private normalizeOilBlockOverride(input: UpdateOilBlockOverrideInput): OilBlockOverride["properties"] {
+    const compact = (value: string | undefined) => {
+      const trimmed = value?.trim();
+      return trimmed ? trimmed : undefined;
+    };
+
+    return Object.fromEntries(
+      Object.entries({
+        name: compact(input.name),
+        type: compact(input.type),
+        status: compact(input.status),
+        operator: compact(input.operator),
+        terrain: compact(input.terrain),
+        basin: compact(input.basin),
+        area_sqkm: compact(input.areaSqkm),
+        award_date: compact(input.awardDate),
+        contract: compact(input.contract),
+        rights: compact(input.rights),
+      }).filter(([, value]) => value !== undefined),
+    ) as OilBlockOverride["properties"];
+  }
+
+  private async readOilBlockOverrides(): Promise<Record<string, OilBlockOverride>> {
+    try {
+      const raw = await readFile(OIL_BLOCK_OVERRIDES_PATH, "utf8");
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch (err: any) {
+      if (err?.code === "ENOENT") return {};
+      throw err;
+    }
+  }
+
+  private async writeOilBlockOverrides(overrides: Record<string, OilBlockOverride>) {
+    await mkdir(dirname(OIL_BLOCK_OVERRIDES_PATH), { recursive: true });
+    await writeFile(OIL_BLOCK_OVERRIDES_PATH, `${JSON.stringify(overrides, null, 2)}\n`, "utf8");
   }
 
   // ---- Ground Data ----
@@ -440,7 +526,7 @@ export class EmissionService {
     this.fetchPromise = this.carbonMapper
       .fetchAllSources({ ...filters, gasType: gasType as "CH4" | "CO2" })
       .then(async (sources) => {
-        await this.cache.set(cacheKey, sources, ONE_DAY_SEC);
+        await this.cache.set(cacheKey, sources, TWO_HOURS_SEC);
         return sources;
       })
       .finally(() => {
@@ -595,6 +681,136 @@ export class EmissionService {
     const fresh = await this.emissionRepo.getEmissionAggregations();
     await this.cache.set(AGGREGATIONS_CACHE_KEY, fresh, AGGREGATIONS_CACHE_TTL_SEC);
     return fresh;
+  }
+
+  async getAnalyticsReport(input: AnalyticsReportInput) {
+    const now = new Date();
+    const defaultStart = new Date(Date.UTC(now.getUTCFullYear(), 0, 1));
+    const startDate = input.startDate ? new Date(input.startDate) : defaultStart;
+    const endDate = input.endDate ? new Date(input.endDate) : now;
+    const period = input.period ?? "monthly";
+    const source = input.source ?? "combined";
+
+    const [satelliteSources, groundRows] = await Promise.all([
+      source !== "ground"
+        ? this.aggregator.fetchAllSources(NIGERIA_BBOX, input.provider as SatelliteProvider | undefined, "CH4")
+        : Promise.resolve([] as NormalizedSource[]),
+      source !== "satellite"
+        ? this.emissionRepo.getGroundMeasurementsForAnalytics({ startDate, endDate, subSector: input.subSector })
+        : Promise.resolve([] as any[]),
+    ]);
+
+    const buckets = new Map<string, {
+      period: string;
+      subSector: string;
+      satelliteEmission: number;
+      groundEmission: number;
+      satelliteCount: number;
+      groundCount: number;
+    }>();
+
+    const periodKeyFor = (date: Date) => period === "yearly"
+      ? `${date.getUTCFullYear()}`
+      : `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+    const getBucket = (date: Date, subSector: string) => {
+      const periodKey = periodKeyFor(date);
+      const mapKey = `${periodKey}:${subSector}`;
+      if (!buckets.has(mapKey)) {
+        buckets.set(mapKey, {
+          period: periodKey,
+          subSector,
+          satelliteEmission: 0,
+          groundEmission: 0,
+          satelliteCount: 0,
+          groundCount: 0,
+        });
+      }
+      return buckets.get(mapKey)!;
+    };
+
+    const facilitiesById = new Map<string, any>();
+    for (const row of groundRows) {
+      if (row.facilityId && !facilitiesById.has(row.facilityId)) facilitiesById.set(row.facilityId, row);
+    }
+
+    const nearestFacility = (s: NormalizedSource) => {
+      let best: any = null;
+      let bestKm = Infinity;
+      for (const facility of facilitiesById.values()) {
+        const km = Math.sqrt(
+          Math.pow((s.latitude - Number(facility.latitude)) * 111, 2) +
+          Math.pow((s.longitude - Number(facility.longitude)) * 111 * Math.cos(s.latitude * Math.PI / 180), 2),
+        );
+        if (km < bestKm) {
+          bestKm = km;
+          best = facility;
+        }
+      }
+      return bestKm <= 30 ? best : null;
+    };
+
+    const satelliteRows = satelliteSources.flatMap((s) => {
+      const detected = new Date(s.lastDetected || s.firstDetected || now);
+      if (!Number.isFinite(detected.getTime()) || detected < startDate || detected > endDate) return [];
+      const facility = nearestFacility(s);
+      const subSector = facility?.subSector ?? input.subSector ?? "Unclassified";
+      if (input.subSector && subSector !== input.subSector) return [];
+      const bucket = getBucket(detected, subSector);
+      bucket.satelliteEmission += Number(s.emissionRate ?? 0);
+      bucket.satelliteCount += 1;
+      return [{
+        date: detected.toISOString(),
+        sourceName: s.name,
+        provider: s.provider,
+        instrument: s.instrument,
+        subSector,
+        emissionRate: Number(s.emissionRate ?? 0),
+        facilityName: facility?.facilityName ?? null,
+      }];
+    });
+
+    const groundTableRows = groundRows.map((g: any) => {
+      const date = new Date(g.measurementDate);
+      const subSector = g.subSector ?? "Unclassified";
+      const bucket = getBucket(date, subSector);
+      bucket.groundEmission += Number(g.methaneReading ?? 0);
+      bucket.groundCount += 1;
+      return {
+        date: date.toISOString(),
+        facilityName: g.facilityName,
+        subSector,
+        facilityType: g.facilityType,
+        operator: g.operator,
+        oilBlock: g.oilBlock,
+        methaneReading: Number(g.methaneReading ?? 0),
+        methodology: g.methodology,
+      };
+    });
+
+    const rows = [...buckets.values()]
+      .map((r) => ({ ...r, combinedEmission: r.satelliteEmission + r.groundEmission }))
+      .sort((a, b) => a.period.localeCompare(b.period) || a.subSector.localeCompare(b.subSector));
+
+    return {
+      filters: {
+        startDate: startDate.toISOString(),
+        endDate: endDate.toISOString(),
+        period,
+        source,
+        subSector: input.subSector ?? "All",
+        provider: input.provider ?? "All",
+      },
+      totals: {
+        satelliteEmission: rows.reduce((sum, r) => sum + r.satelliteEmission, 0),
+        groundEmission: rows.reduce((sum, r) => sum + r.groundEmission, 0),
+        combinedEmission: rows.reduce((sum, r) => sum + r.combinedEmission, 0),
+        satelliteCount: rows.reduce((sum, r) => sum + r.satelliteCount, 0),
+        groundCount: rows.reduce((sum, r) => sum + r.groundCount, 0),
+      },
+      rows,
+      satelliteRows,
+      groundRows: groundTableRows,
+    };
   }
 
   /** Explicit cache buster — called after any write that would change aggregates. */

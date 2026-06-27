@@ -6,9 +6,12 @@ import {
   submitGroundDataSchema,
   facilityIdParamSchema,
   emissionFilterSchema,
+  analyticsReportSchema,
   createFacilitySchema,
   createAlertSchema,
   updateFacilityThresholdSchema,
+  oilBlockIdParamSchema,
+  updateOilBlockOverrideSchema,
   createGeofenceSchema,
   updateGeofenceSchema,
   createFieldSubmissionSchema,
@@ -45,6 +48,22 @@ export function emissionRoutes(fastify: FastifyInstance, controller: EmissionCon
   fastify.get("/facilities/filter-options", {
     preHandler: [authenticate],
     handler: controller.getFacilityFilterOptions,
+  });
+
+  // Oil block metadata overrides
+  fastify.get("/oil-block-overrides", {
+    preHandler: [authenticate],
+    handler: controller.getOilBlockOverrides,
+  });
+
+  fastify.put("/oil-block-overrides/:blockId", {
+    preHandler: [
+      authenticate,
+      authorize("admin", "regulator"),
+      validate(oilBlockIdParamSchema, "params"),
+      validate(updateOilBlockOverrideSchema),
+    ],
+    handler: controller.updateOilBlockOverride,
   });
 
   // Alerts
@@ -170,5 +189,10 @@ export function emissionRoutes(fastify: FastifyInstance, controller: EmissionCon
   fastify.get("/emissions/aggregations", {
     preHandler: [authenticate],
     handler: controller.getEmissionAggregations,
+  });
+
+  fastify.get("/analytics/report", {
+    preHandler: [authenticate, validate(analyticsReportSchema, "querystring")],
+    handler: controller.getAnalyticsReport,
   });
 }

@@ -4,9 +4,11 @@ import { success, created, error } from "../utils/api-response";
 import type {
   SubmitGroundDataInput,
   EmissionFilterInput,
+  AnalyticsReportInput,
   CreateFacilityInput,
   CreateAlertInput,
   UpdateFacilityThresholdInput,
+  UpdateOilBlockOverrideInput,
   CreateGeofenceInput,
   UpdateGeofenceInput,
   CreateFieldSubmissionInput,
@@ -74,6 +76,30 @@ export class EmissionController {
     try {
       const result = await this.emissionService.getFacilityFilterOptions();
       return success(reply, result);
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  getOilBlockOverrides = async (_request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const result = await this.emissionService.getOilBlockOverrides();
+      return success(reply, result);
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  updateOilBlockOverride = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const { blockId } = request.params as { blockId: string };
+      const userId = (request as any).user.sub;
+      const result = await this.emissionService.updateOilBlockOverride(
+        blockId,
+        userId,
+        request.body as UpdateOilBlockOverrideInput,
+      );
+      return success(reply, result, "Oil block metadata updated");
     } catch (err: any) {
       return error(reply, err.message, err.statusCode ?? 500);
     }
@@ -333,6 +359,15 @@ export class EmissionController {
   getEmissionAggregations = async (_request: FastifyRequest, reply: FastifyReply) => {
     try {
       const result = await this.emissionService.getEmissionAggregations();
+      return success(reply, result);
+    } catch (err: any) {
+      return error(reply, err.message, err.statusCode ?? 500);
+    }
+  };
+
+  getAnalyticsReport = async (request: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const result = await this.emissionService.getAnalyticsReport(request.query as AnalyticsReportInput);
       return success(reply, result);
     } catch (err: any) {
       return error(reply, err.message, err.statusCode ?? 500);

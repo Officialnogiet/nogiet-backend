@@ -91,6 +91,38 @@ export class EmissionRepository {
       .orderBy(desc(groundMeasurements.measurementDate));
   }
 
+  async getGroundMeasurementsForAnalytics(filters: {
+    startDate?: Date;
+    endDate?: Date;
+    subSector?: string;
+  }) {
+    const conditions: any[] = [];
+    if (filters.startDate) conditions.push(gte(groundMeasurements.measurementDate, filters.startDate));
+    if (filters.endDate) conditions.push(lte(groundMeasurements.measurementDate, filters.endDate));
+    if (filters.subSector) conditions.push(eq(facilities.subSector, filters.subSector));
+
+    const query = this.db
+      .select({
+        facilityId: groundMeasurements.facilityId,
+        facilityName: facilities.name,
+        subSector: facilities.subSector,
+        facilityType: facilities.facilityType,
+        operator: facilities.operator,
+        oilBlock: facilities.oilBlock,
+        measurementDate: groundMeasurements.measurementDate,
+        methaneReading: groundMeasurements.methaneReading,
+        latitude: sql<number>`coalesce(${groundMeasurements.latitude}, ${facilities.latitude})`,
+        longitude: sql<number>`coalesce(${groundMeasurements.longitude}, ${facilities.longitude})`,
+        methodology: groundMeasurements.methodology,
+      })
+      .from(groundMeasurements)
+      .leftJoin(facilities, eq(groundMeasurements.facilityId, facilities.id));
+
+    return conditions.length > 0
+      ? query.where(and(...conditions)).orderBy(desc(groundMeasurements.measurementDate))
+      : query.orderBy(desc(groundMeasurements.measurementDate));
+  }
+
   // Alerts
   async getAlerts(limit = 20) {
     return this.db

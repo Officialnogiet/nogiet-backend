@@ -5,7 +5,12 @@ import { TropomiService } from "./tropomi.service";
 import { CacheService } from "../cache.service";
 import type { NormalizedSource, SatelliteProvider, CarbonMapperSource } from "../../types/index";
 
-const ONE_DAY_SEC = 24 * 60 * 60;
+const TWO_HOURS_SEC = 2 * 60 * 60;
+const AGGREGATED_CACHE_VERSION = "v2-nonzero-emissions";
+
+function hasMeasuredEmissionRate(source: NormalizedSource): boolean {
+  return Number.isFinite(source.emissionRate) && source.emissionRate > 0;
+}
 
 function carbonMapperToNormalized(src: CarbonMapperSource): NormalizedSource {
   return {
@@ -49,7 +54,7 @@ export class SatelliteAggregatorService {
     providerFilter?: SatelliteProvider,
     gasType: string = "CH4",
   ): Promise<NormalizedSource[]> {
-    const cacheKey = `nogiet:sat:aggregated:${gasType}:${providerFilter ?? "all"}`;
+    const cacheKey = `nogiet:sat:aggregated:${AGGREGATED_CACHE_VERSION}:${gasType}:${providerFilter ?? "all"}`;
     const cached = await this.cache.get<NormalizedSource[]>(cacheKey);
     if (cached) {
       return bbox ? cached.filter(s => isInsideBBox(s.latitude, s.longitude, bbox)) : cached;
@@ -58,7 +63,7 @@ export class SatelliteAggregatorService {
     const results = await this.fetchFromProviders(providerFilter, gasType);
 
     if (results.length > 0) {
-      await this.cache.set(cacheKey, results, ONE_DAY_SEC);
+      await this.cache.set(cacheKey, results, TWO_HOURS_SEC);
     }
 
     return bbox ? results.filter(s => isInsideBBox(s.latitude, s.longitude, bbox)) : results;
@@ -69,13 +74,13 @@ export class SatelliteAggregatorService {
     providerFilter?: SatelliteProvider,
     gasType: string = "CH4",
   ): Promise<NormalizedSource[]> {
-    const cacheKey = `nogiet:sat:aggregated:${gasType}:${providerFilter ?? "all"}`;
+    const cacheKey = `nogiet:sat:aggregated:${AGGREGATED_CACHE_VERSION}:${gasType}:${providerFilter ?? "all"}`;
     await this.cache.del(cacheKey);
 
     const results = await this.fetchFromProviders(providerFilter, gasType, /* forceRefresh */ true);
 
     if (results.length > 0) {
-      await this.cache.set(cacheKey, results, ONE_DAY_SEC);
+      await this.cache.set(cacheKey, results, TWO_HOURS_SEC);
     }
 
     return bbox ? results.filter(s => isInsideBBox(s.latitude, s.longitude, bbox)) : results;
@@ -128,7 +133,12 @@ export class SatelliteAggregatorService {
       );
     }
 
-    const allResults = await Promise.all(fetchTasks);
-    return allResults.flat();
+    const allSources = (await Promise.all(fetchTasks)).flat();
+    const measuredSources = allSources.filter(hasMeasuredEmissionRate);
+    const dropped = allSources.length - measuredSources.length;
+    if (dropped > 0) {
+      console.log(`[Aggregator] dropped ${dropped} satellite source(s) with zero or missing emission rate`);
+    }
+    return measuredSources;
   }
 }

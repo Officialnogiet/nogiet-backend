@@ -13,6 +13,10 @@ export const facilityIdParamSchema = z.object({
   id: z.string().uuid("Invalid facility ID"),
 });
 
+export const oilBlockIdParamSchema = z.object({
+  blockId: z.string().min(1, "Oil block ID is required").max(120),
+});
+
 export const emissionFilterSchema = z.object({
   startDate: z.string().datetime().optional(),
   endDate: z.string().datetime().optional(),
@@ -36,6 +40,15 @@ export const emissionFilterSchema = z.object({
   facilityType: z.string().optional(),
 });
 
+export const analyticsReportSchema = z.object({
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
+  period: z.enum(["monthly", "yearly"]).optional().default("monthly"),
+  subSector: z.enum(["Upstream", "Midstream", "Downstream"]).optional(),
+  source: z.enum(["satellite", "ground", "combined"]).optional().default("combined"),
+  provider: z.enum(["carbon_mapper", "imeo", "tropomi"]).optional(),
+});
+
 export const createFacilitySchema = z.object({
   name: z.string().min(1, "Name is required").max(255),
   latitude: z.number().min(-90).max(90),
@@ -44,13 +57,34 @@ export const createFacilitySchema = z.object({
   region: z.string().max(100).optional(),
   state: z.string().max(100).optional(),
   lga: z.string().max(100).optional(),
+  subSector: z.enum(["Upstream", "Midstream", "Downstream"], {
+    required_error: "Facilities Classification or Sub-Sector is required",
+  }),
   oilBlock: z.string().max(100).optional(),
+  oilfield: z.string().max(255).optional(),
   operator: z.string().max(255).optional(),
   facilityType: z.string().max(100).optional(),
+  geographicLocation: z.enum(["Onshore", "Offshore"]).optional(),
+  customField1: z.string().optional(),
+  customField2: z.string().optional(),
+  customField3: z.string().optional(),
 });
 
 export const updateFacilityThresholdSchema = z.object({
   alertThreshold: z.number().positive().nullable(),
+});
+
+export const updateOilBlockOverrideSchema = z.object({
+  name: z.string().min(1).max(255).optional(),
+  type: z.string().max(100).optional(),
+  status: z.string().max(100).optional(),
+  operator: z.string().max(255).optional(),
+  terrain: z.string().max(100).optional(),
+  basin: z.string().max(100).optional(),
+  areaSqkm: z.string().max(100).optional(),
+  awardDate: z.string().max(100).optional(),
+  contract: z.string().max(255).optional(),
+  rights: z.string().max(255).optional(),
 });
 
 export const createAlertSchema = z.object({
@@ -91,9 +125,11 @@ export const reviewFieldSubmissionSchema = z.object({
 
 export type SubmitGroundDataInput = z.infer<typeof submitGroundDataSchema>;
 export type EmissionFilterInput = z.infer<typeof emissionFilterSchema>;
+export type AnalyticsReportInput = z.infer<typeof analyticsReportSchema>;
 export type CreateFacilityInput = z.infer<typeof createFacilitySchema>;
 export type CreateAlertInput = z.infer<typeof createAlertSchema>;
 export type UpdateFacilityThresholdInput = z.infer<typeof updateFacilityThresholdSchema>;
+export type UpdateOilBlockOverrideInput = z.infer<typeof updateOilBlockOverrideSchema>;
 export type CreateGeofenceInput = z.infer<typeof createGeofenceSchema>;
 export type UpdateGeofenceInput = z.infer<typeof updateGeofenceSchema>;
 export type CreateFieldSubmissionInput = z.infer<typeof createFieldSubmissionSchema>;
